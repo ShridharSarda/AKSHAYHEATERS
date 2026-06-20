@@ -4,7 +4,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import ProductDetails from "./pages/ProductDetails"; // 🟢 ADDED: Import your details page
-
+import ProductCategories from "./components/ProductCategories"; // 👈 Add this line!
 import DashboardLayout from "./layouts/DashboardLayout";
 
 function App() {
@@ -25,6 +25,7 @@ function App() {
             path="/products"
             element={<Products />}
           />
+           
 
           {/* 🟢 ADDED: Route for viewing single product info */}
           <Route

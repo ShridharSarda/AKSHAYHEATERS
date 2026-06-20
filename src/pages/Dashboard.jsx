@@ -88,47 +88,45 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   const fetchMetrics = useCallback(async () => {
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      // 1. Fetch from the "products" collection (Raw Materials)
-      const productsSnapshot = await getDocs(collection(db, "products"));
-      let rawCount = 0;
-      let lowStock = 0;
+    // Query the unified 'inventory' collection just like Products.js does
+    const inventorySnapshot = await getDocs(collection(db, "inventory"));
+    
+    let rawCount = 0;
+    let finishedCount = 0;
+    let lowStock = 0;
 
-      productsSnapshot.forEach((doc) => {
-        const data = doc.data();
-        const category = data.category || "";
-        const currentStock = Number(data.stock) || 0;
-        const minStock = Number(data.minimumStock) || 0;
+    inventorySnapshot.forEach((doc) => {
+      const data = doc.data();
+      
+      const itemType = data.itemType || "Raw Material";
+      const currentStock = Number(data.stock ?? data.quantity ?? 0);
+      const minStock = Number(data.minimumStock || 0);
 
-        if (category === "Raw Material") rawCount++;
-        if (currentStock < minStock) lowStock++;
-      });
-
-      // 2. Fetch from the "finishedgoods" collection (Finished Goods)
-      const fgSnapshot = await getDocs(collection(db, "finishedgoods"));
-      let finishedCount = 0;
-
-      fgSnapshot.forEach((doc) => {
-        const data = doc.data();
+      // 1. Increment type-specific global metrics
+      if (itemType === "Raw Material") {
+        rawCount++;
+      } else if (itemType === "Finished Good") {
         finishedCount++;
+      }
 
-        const currentStock = Number(data.quantity) || 0;
-        const minStock = Number(data.minimumStock) || 0;
+      // 2. Compute low stock flag matching your custom Products page filter
+      if (currentStock < minStock) {
+        lowStock++;
+      }
+    });
 
-        if (currentStock < minStock) lowStock++;
-      });
-
-      setRawMaterialsCount(rawCount);
-      setFinishedGoodsCount(finishedCount);
-      setLowStockCount(lowStock);
-    } catch (error) {
-      console.error("Error fetching dashboard statistics from Firestore:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    setRawMaterialsCount(rawCount);
+    setFinishedGoodsCount(finishedCount);
+    setLowStockCount(lowStock);
+  } catch (error) {
+    console.error("Error fetching dashboard statistics from Firestore:", error);
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => {
     fetchMetrics();

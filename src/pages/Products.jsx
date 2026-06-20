@@ -8,16 +8,22 @@ const Products = () => {
   const navigate = useNavigate(); 
   const [showModal, setShowModal] = useState(false);
   const [products, setProducts] = useState([]);
+  
+  // Explicitly check if a specific category was passed from route state
+  const passedCategory = location.state?.defaultCategory;
+  // If no category was passed, use "Global Inventory" as the title string
+  const currentCategory = passedCategory || "Global Inventory";
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState(location.state?.defaultCategory || "All");
+  const [typeFilter, setTypeFilter] = useState("All");
   const [isLowStockOnly, setIsLowStockOnly] = useState(location.state?.showLowStockOnly || false);
 
   const [formData, setFormData] = useState({
     itemCode: "",
     name: "",
     specification: "",
-    category: "Raw Material",
+    category: passedCategory || "Theormo", // Fallback default value for new item initialization
+    itemType: "Raw Material", 
     stock: 0,
     uom: "Nos",
     rackLocation: "",
@@ -25,52 +31,57 @@ const Products = () => {
     price: "", 
   });
 
-  const fetchProducts = async () => {
+  const fetchData = async () => {
     try {
-      const rawSnapshot = await getDocs(collection(db, "products"));
-      const rawData = rawSnapshot.docs.map((doc) => ({
+      const inventorySnapshot = await getDocs(collection(db, "inventory"));
+      const inventoryData = inventorySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
 
-      const fgSnapshot = await getDocs(collection(db, "finishedgoods"));
-      const fgData = fgSnapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          itemCode: data.fgCode || "",
-          name: data.productName || "",
-          specification: data.specification || "",
-          category: "Finished Good",
-          stock: Number(data.quantity) || 0,
-          uom: data.uom || "Nos",
-          rackLocation: data.rackLocation || "FG Whse",
-          minimumStock: Number(data.minimumStock) || 0,
-        };
-      });
-
-      setProducts([...rawData, ...fgData]);
+      setProducts(inventoryData);
     } catch (error) {
-      console.error("Error fetching products: ", error);
+      console.error("Error fetching data: ", error);
     }
   };
 
   useEffect(() => {
-    fetchProducts();
+    fetchData();
   }, []);
 
+  // 🟢 FIXED FILTER LOGIC:
+ // 🟢 FIXED: Ultra-precise filter matc hing Dashboard metrics
   const filteredProducts = products.filter((product) => {
-    const currentStock = Number(product.stock) || 0;
-    const minStock = Number(product.minimumStock) || 0;
+    
+    // 1. Handle Low Stock Logic First
+    if (isLowStockOnly) {
+      // Dashboard looks at both 'stock' and 'quantity' fields depending on item type
+      const currentStock = Number(product.stock ?? product.quantity ?? 0);
+      const minStock = Number(product.minimumStock || 0);
 
-    if (categoryFilter !== "All" && product.category !== categoryFilter) {
+      // If the item has sufficient stock, remove it from the list immediately
+      if (currentStock >= minStock) {
+        return false;
+      }
+    }
+
+    // 2. Handle Category isolation logic
+    if (passedCategory) {
+      // If a specific category card was clicked (e.g., Raw Materials card)
+      if (product.category !== passedCategory) return false;
+    } else {
+      // If NO state was passed and we aren't viewing global low stock, default to "Theormo"
+      if (!isLowStockOnly && product.category !== "Theormo") {
+        return false;
+      }
+    }
+
+    // 3. Filter by Type (Raw Material vs Finished Good)
+    if (typeFilter !== "All" && product.itemType !== typeFilter) {
       return false;
     }
 
-    if (isLowStockOnly && currentStock >= minStock) {
-      return false;
-    }
-
+    // 4. Global text search match
     const query = searchTerm.toLowerCase();
     return (
       (product.itemCode?.toLowerCase() || "").includes(query) ||
@@ -81,44 +92,30 @@ const Products = () => {
   });
 
   const handleSave = async () => {
-    if (!formData.itemCode || !formData.name) {
-      alert("Product Code and Product Name are required");
+    if (!formData.itemCode || !formData.name || !formData.category) {
+      alert("Product Code, Name, and Category are required fields!");
       return;
     }
 
     try {
-      if (formData.category === "Finished Good") {
-        await addDoc(collection(db, "finishedgoods"), {
-          fgCode: formData.itemCode,
-          productName: formData.name,
-          specification: formData.specification,
-          quantity: Number(formData.stock),
-          uom: formData.uom,
-          productionDate: new Date().toISOString().split('T')[0],
-          status: "Ready",
-          remarks: "Production Completed",
-          minimumStock: Number(formData.minimumStock) || 0,
-          rackLocation: formData.rackLocation || "FG Whse"
-        });
-        alert("Finished Good added successfully!");
-      } else {
-        await addDoc(collection(db, "products"), {
-          ...formData,
-          stock: Number(formData.stock),
-          minimumStock: Number(formData.minimumStock),
-          createdAt: new Date(),
-        });
-        alert("Raw Material added successfully!");
-      }
+      await addDoc(collection(db, "inventory"), {
+        ...formData,
+        stock: Number(formData.stock) || 0,
+        minimumStock: Number(formData.minimumStock) || 0,
+        price: Number(formData.price) || 0,
+        createdAt: new Date(),
+      });
 
+      alert("Product added successfully!");
       setShowModal(false);
-      fetchProducts();
+      fetchData();
 
       setFormData({
         itemCode: "",
         name: "",
         specification: "",
-        category: "Raw Material",
+        category: passedCategory || "Theormo",
+        itemType: "Raw Material",
         stock: 0,
         uom: "Nos",
         rackLocation: "",
@@ -133,15 +130,24 @@ const Products = () => {
   };
 
   return (
-    // 🟢 OPTIMIZED: Replaced absolute centering container constraints with space alignment styles
-    <div className="p-6 space-y-6 text-gray-800 bg-gray-50">
+    <div className="p-6 space-y-6 text-gray-800 bg-gray-50 min-h-screen">
       
+      {/* Back Link Wrapper */}
+      <button 
+        onClick={() => navigate("/dashboard")}
+        className="text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors flex items-center gap-1 group"
+      >
+        <span className="transform group-hover:-translate-x-0.5 transition-transform">&larr;</span> Back to Dashboard
+      </button>
+
       {/* Header Block */}
       <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Products</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900 capitalize">
+            {isLowStockOnly && !passedCategory ? "Low Stock Alerts" : currentCategory}
+          </h1>
           <p className="mt-1 text-sm text-gray-500">
-            {isLowStockOnly ? "⚠️ Viewing Low Stock Alerts Only" : "Manage Raw Materials & Finished Goods"}
+            {isLowStockOnly ? "⚠️ Viewing Low Stock Alerts across entire inventory" : `Viewing items classified under ${currentCategory}`}
           </p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -167,26 +173,28 @@ const Products = () => {
         <div className="flex-1 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
           <input
             type="text"
-            placeholder="Search by Product Code, Name, Specification..."
+            placeholder="Search by Code, Name, Rack..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full p-2 focus:ring-0 outline-none text-gray-700 placeholder-gray-400 text-sm"
           />
         </div>
-        <div className="w-full sm:w-56 bg-white p-2 rounded-xl shadow-sm border border-gray-200 flex items-center">
+        
+        {/* Filter Selection Input */}
+        <div className="w-full sm:w-64 bg-white p-2 rounded-xl shadow-sm border border-gray-200 flex items-center">
           <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
             className="w-full bg-transparent outline-none text-gray-700 text-sm font-medium cursor-pointer"
           >
-            <option value="All">📁 All Categories</option>
-            <option value="Raw Material">📦 Raw Material</option>
-            <option value="Finished Good">⚙️ Finished Good</option>
+            <option value="All">✨ All Items</option>
+            <option value="Raw Material">📦 Raw Materials</option>
+            <option value="Finished Good">⚙️ Finished Goods</option>
           </select>
         </div>
       </div>
 
-      {/* Desktop Table */}
+      {/* Desktop Table View */}
       <div className="hidden md:block bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse bg-white">
@@ -194,8 +202,7 @@ const Products = () => {
               <tr>
                 <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
                 <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
-                <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Specification</th>
-                <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
+                <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
                 <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Stock</th>
                 <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">UOM</th>
                 <th className="p-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Rack</th>
@@ -204,8 +211,8 @@ const Products = () => {
             <tbody className="divide-y divide-gray-100 text-sm">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-gray-500">
-                    No matching products found.
+                  <td colSpan="6" className="p-8 text-center text-gray-500">
+                    No matching products found under this filter configuration.
                   </td>
                 </tr>
               ) : (
@@ -221,14 +228,17 @@ const Products = () => {
                       className="hover:bg-gray-50/40 transition-colors cursor-pointer"
                     >
                       <td className="p-4 font-semibold text-gray-900 whitespace-nowrap">{product.itemCode || "-"}</td>
-                      <td className="p-4 text-gray-900 font-medium">{product.name || "-"}</td>
-                      <td className="p-4 text-gray-600 max-w-xs truncate">{product.specification || "-"}</td>
+                      <td className="p-4 text-gray-900 font-medium">
+                        <div>{product.name || "-"}</div>
+                        <span className="text-xs text-gray-400 font-normal">{product.specification || "-"}</span>
+                      </td>
                       <td className="p-4 whitespace-nowrap">
-                        <span className={`px-2.5 py-0.5 rounded-md text-xs font-medium border ${product.category === "Raw Material"
-                          ? "bg-green-50 text-green-700 border-green-200"
-                          : "bg-blue-50 text-blue-700 border-blue-200"
-                          }`}>
-                          {product.category || "Unassigned"}
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
+                          product.itemType === "Finished Good" 
+                            ? "bg-blue-50 text-blue-700 border-blue-200" 
+                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        }`}>
+                          {product.itemType || "Raw Material"}
                         </span>
                       </td>
                       <td className={`p-4 font-semibold ${isLow ? "text-red-600 bg-red-50/20 font-bold" : "text-gray-900"}`}>
@@ -268,12 +278,11 @@ const Products = () => {
                     <span className="text-xs font-bold text-gray-400 block uppercase">{product.itemCode || "NO CODE"}</span>
                     <h3 className="font-bold text-gray-900 text-base mt-0.5">{product.name || "-"}</h3>
                   </div>
-                  <span className={`px-2.5 py-0.5 rounded-md text-xs font-medium border ${product.category === "Raw Material"
-                    ? "bg-green-50 text-green-700 border-green-100"
-                    : "bg-blue-50 text-blue-700 border-blue-100"
-                    }`}>
-                    {product.category}
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                      {product.itemType || "Raw Material"}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
@@ -309,20 +318,50 @@ const Products = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Item Type Selection */}
+              <div className="sm:col-span-2 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                <label className="text-xs font-bold text-gray-700 block mb-2">Item Classification Type *</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer font-medium">
+                    <input 
+                      type="radio" 
+                      name="itemType" 
+                      value="Raw Material"
+                      checked={formData.itemType === "Raw Material"}
+                      onChange={(e) => setFormData({ ...formData, itemType: e.target.value })}
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500" 
+                    />
+                    📦 Raw Material
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer font-medium">
+                    <input 
+                      type="radio" 
+                      name="itemType" 
+                      value="Finished Good"
+                      checked={formData.itemType === "Finished Good"}
+                      onChange={(e) => setFormData({ ...formData, itemType: e.target.value })}
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500" 
+                    />
+                    ⚙️ Finished Good
+                  </label>
+                </div>
+              </div>
+
+              {/* Input Fields */}
               <div>
                 <label className="text-xs font-semibold text-gray-600 block mb-1">Product Code *</label>
                 <input
-                  placeholder="e.g. RM-001"
+                  placeholder={formData.itemType === "Finished Good" ? "e.g. FG-001" : "e.g. RM-001"}
                   value={formData.itemCode}
                   onChange={(e) => setFormData({ ...formData, itemCode: e.target.value })}
-                  className="w-full border border-gray-200 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  className="w-full border border-gray-200 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium placeholder-gray-400 bg-white"
                 />
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-gray-600 block mb-1">Product Name *</label>
                 <input
-                  placeholder="e.g. Ceramic Collar"
+                  placeholder="e.g. HEATER"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full border border-gray-200 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
@@ -332,23 +371,11 @@ const Products = () => {
               <div className="sm:col-span-2">
                 <label className="text-xs font-semibold text-gray-600 block mb-1">Specification</label>
                 <input
-                  placeholder="e.g. 15mm Outer Diameter"
+                  placeholder="e.g. 13 MM"
                   value={formData.specification}
                   onChange={(e) => setFormData({ ...formData, specification: e.target.value })}
                   className="w-full border border-gray-200 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                 />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-600 block mb-1">Category</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full border border-gray-200 p-2.5 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  <option value="Raw Material">Raw Material</option>
-                  <option value="Finished Good">Finished Good</option>
-                </select>
               </div>
 
               <div>
@@ -378,12 +405,13 @@ const Products = () => {
               <div>
                 <label className="text-xs font-semibold text-gray-600 block mb-1">Rack Location</label>
                 <input
-                  placeholder="e.g. Shelf A1"
+                  placeholder="e.g. A02"
                   value={formData.rackLocation}
                   onChange={(e) => setFormData({ ...formData, rackLocation: e.target.value })}
                   className="w-full border border-gray-200 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                 />
               </div>
+
               <div>
                 <label className="text-xs font-semibold text-gray-600 block mb-1">Unit Price (₹) *</label>
                 <input
@@ -394,6 +422,7 @@ const Products = () => {
                   className="w-full border border-gray-200 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
               </div>
+
               <div className="sm:col-span-2">
                 <label className="text-xs font-semibold text-gray-600 block mb-1">Minimum Stock Alert Level</label>
                 <input
