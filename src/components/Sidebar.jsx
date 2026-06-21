@@ -42,7 +42,7 @@ const navGroups = [
     items: [
       { name: "Inward Entries", icon: <FaArrowDown />, path: "/inward" },
       { name: "Production Issue", icon: <FaIndustry />, path: "/production-issue" },
-      { name: "Dispatch", icon: <FaTruck />, path: "/dispatch" },
+      { name: "Dispatch", icon: <FaTruck />, path: "/dispatch" }, 
     ],
   },
   {

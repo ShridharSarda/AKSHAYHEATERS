@@ -19,8 +19,6 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Debug Logs
-console.log("Project:", app.options.projectId);
-console.log("DB:", db);
+
 
 export default app;

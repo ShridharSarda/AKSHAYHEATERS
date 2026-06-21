@@ -9,20 +9,22 @@ const Products = () => {
   const [showModal, setShowModal] = useState(false);
   const [products, setProducts] = useState([]);
   
-  // Explicitly check if a specific category was passed from route state
   const passedCategory = location.state?.defaultCategory;
-  // If no category was passed, use "Global Inventory" as the title string
   const currentCategory = passedCategory || "Global Inventory";
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState("All");
+  const [typeFilter, setTypeFilter] = useState("Raw Material");
   const [isLowStockOnly, setIsLowStockOnly] = useState(location.state?.showLowStockOnly || false);
+
+  // 🟢 PAGINATION STATE
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage =8;
 
   const [formData, setFormData] = useState({
     itemCode: "",
     name: "",
     specification: "",
-    category: passedCategory || "Theormo", // Fallback default value for new item initialization
+    category: passedCategory || "Theormo", 
     itemType: "Raw Material", 
     stock: 0,
     uom: "Nos",
@@ -49,39 +51,31 @@ const Products = () => {
     fetchData();
   }, []);
 
-  // 🟢 FIXED FILTER LOGIC:
- // 🟢 FIXED: Ultra-precise filter matc hing Dashboard metrics
+  // Reset pagination back to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, typeFilter, isLowStockOnly, passedCategory]);
+
+  // 1. Get filtered result list first
   const filteredProducts = products.filter((product) => {
-    
-    // 1. Handle Low Stock Logic First
     if (isLowStockOnly) {
-      // Dashboard looks at both 'stock' and 'quantity' fields depending on item type
       const currentStock = Number(product.stock ?? product.quantity ?? 0);
       const minStock = Number(product.minimumStock || 0);
-
-      // If the item has sufficient stock, remove it from the list immediately
-      if (currentStock >= minStock) {
-        return false;
-      }
+      if (currentStock >= minStock) return false;
     }
 
-    // 2. Handle Category isolation logic
     if (passedCategory) {
-      // If a specific category card was clicked (e.g., Raw Materials card)
-      if (product.category !== passedCategory) return false;
-    } else {
-      // If NO state was passed and we aren't viewing global low stock, default to "Theormo"
-      if (!isLowStockOnly && product.category !== "Theormo") {
-        return false;
+      if (passedCategory === "Raw Material" || passedCategory === "Finished Good") {
+        if (product.itemType !== passedCategory) return false;
+      } else {
+        if (product.category !== passedCategory) return false;
       }
+    } else {
+      if (!isLowStockOnly && product.itemType !== "Raw Material") return false;
     }
 
-    // 3. Filter by Type (Raw Material vs Finished Good)
-    if (typeFilter !== "All" && product.itemType !== typeFilter) {
-      return false;
-    }
+    if (typeFilter !== "All" && product.itemType !== typeFilter) return false;
 
-    // 4. Global text search match
     const query = searchTerm.toLowerCase();
     return (
       (product.itemCode?.toLowerCase() || "").includes(query) ||
@@ -90,6 +84,12 @@ const Products = () => {
       (product.specification?.toLowerCase() || "").includes(query)
     );
   });
+
+  // 🟢 2. PAGINATION MATH: Slice the filtered list down to 10 items max
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentPaginatedProducts = filteredProducts.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
 
   const handleSave = async () => {
     if (!formData.itemCode || !formData.name || !formData.category) {
@@ -180,16 +180,13 @@ const Products = () => {
           />
         </div>
         
-        {/* Filter Selection Input */}
         <div className="w-full sm:w-64 bg-white p-2 rounded-xl shadow-sm border border-gray-200 flex items-center">
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
             className="w-full bg-transparent outline-none text-gray-700 text-sm font-medium cursor-pointer"
           >
-            <option value="All">✨ All Items</option>
             <option value="Raw Material">📦 Raw Materials</option>
-            <option value="Finished Good">⚙️ Finished Goods</option>
           </select>
         </div>
       </div>
@@ -209,14 +206,14 @@ const Products = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
-              {filteredProducts.length === 0 ? (
+              {currentPaginatedProducts.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="p-8 text-center text-gray-500">
                     No matching products found under this filter configuration.
                   </td>
                 </tr>
               ) : (
-                filteredProducts.map((product) => {
+                currentPaginatedProducts.map((product) => {
                   const currentStock = Number(product.stock) || 0;
                   const minStock = Number(product.minimumStock) || 0;
                   const isLow = currentStock < minStock;
@@ -233,11 +230,7 @@ const Products = () => {
                         <span className="text-xs text-gray-400 font-normal">{product.specification || "-"}</span>
                       </td>
                       <td className="p-4 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
-                          product.itemType === "Finished Good" 
-                            ? "bg-blue-50 text-blue-700 border-blue-200" 
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        }`}>
+                        <span className="px-2 py-0.5 rounded text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
                           {product.itemType || "Raw Material"}
                         </span>
                       </td>
@@ -257,12 +250,12 @@ const Products = () => {
 
       {/* Mobile Stacked Card View */}
       <div className="block md:hidden space-y-4">
-        {filteredProducts.length === 0 ? (
+        {currentPaginatedProducts.length === 0 ? (
           <div className="bg-white p-8 rounded-xl border border-gray-200 text-center text-gray-500 shadow-sm">
             No matching products found.
           </div>
         ) : (
-          filteredProducts.map((product) => {
+          currentPaginatedProducts.map((product) => {
             const currentStock = Number(product.stock) || 0;
             const minStock = Number(product.minimumStock) || 0;
             const isLow = currentStock < minStock;
@@ -278,11 +271,9 @@ const Products = () => {
                     <span className="text-xs font-bold text-gray-400 block uppercase">{product.itemCode || "NO CODE"}</span>
                     <h3 className="font-bold text-gray-900 text-base mt-0.5">{product.name || "-"}</h3>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">
-                      {product.itemType || "Raw Material"}
-                    </span>
-                  </div>
+                  <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                    {product.itemType || "Raw Material"}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
@@ -307,6 +298,50 @@ const Products = () => {
           })
         )}
       </div>
+
+      {/* 🟢 PAGINATION CONTROLS FOOTER */}
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+          <p className="text-sm text-gray-500 font-medium">
+            Showing <span className="text-gray-800 font-semibold">{indexOfFirstItem + 1}</span> to{" "}
+            <span className="text-gray-800 font-semibold">
+              {Math.min(indexOfLastItem, filteredProducts.length)}
+            </span>{" "}
+            of <span className="text-gray-800 font-semibold">{filteredProducts.length}</span> items
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            >
+              &larr; Prev
+            </button>
+            
+            {[...Array(totalPages)].map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentPage(idx + 1)}
+                className={`h-8 w-8 text-sm font-bold rounded-lg transition-colors ${
+                  currentPage === idx + 1
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "text-gray-600 border border-transparent hover:border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                {idx + 1}
+              </button>
+            ))}
+
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            >
+              Next &rarr;
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal View Block */}
       {showModal && (
