@@ -11,6 +11,7 @@ import {
   FaTruck,
   FaExclamationTriangle,
   FaSyncAlt,
+  FaUserClock, // 👈 ADD THIS ICON
 } from "react-icons/fa";
 
 const palette = {
@@ -89,16 +90,16 @@ function Dashboard() {
   const [todaysInwardCount, setTodaysInwardCount] = useState(0);
   const [todaysDispatchCount, setTodaysDispatchCount] = useState(0);
   
-  // ✅ NEW STATE: Store recent orders pulled dynamically from Firestore
-  const [fetchedRecentOrders, setFetchedRecentOrders] = useState([]);
+  // 👥 NEW STATE: Track how many users are waiting for approval
+  const [pendingUsersCount, setPendingUsersCount] = useState(0);
   
+  const [fetchedRecentOrders, setFetchedRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchMetrics = useCallback(async () => {
     try {
       setLoading(true);
 
-      // Define date ranges for today's dynamic metrics
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date();
@@ -117,7 +118,6 @@ function Dashboard() {
           ordersPending++;
         }
         
-        // Accumulate details for recent order history layout matching fields safely
         allOrdersList.push({
           id: doc.id,
           wo: data.woNo || "N/A",
@@ -125,11 +125,10 @@ function Dashboard() {
           product: data.productName || (data.items && data.items[0]?.name) || "Manufactured Goods",
           qty: Number(data.qty || 0),
           status: data.status || "Pending",
-          createdAtDate: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(0) // Safe fallback for sorting
+          createdAtDate: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(0)
         });
       });
 
-      // Sort recent orders descending by creation timestamp and limit view list to top 5
       const sortedRecent = allOrdersList
         .sort((a, b) => b.createdAtDate - a.createdAtDate)
         .slice(0, 3);
@@ -191,6 +190,16 @@ function Dashboard() {
         }
       });
 
+      // 👥 --- 6. NEW FIELD: FETCH PENDING ACCESS REQUESTS ---
+      const usersSnapshot = await getDocs(collection(db, "users"));
+      let pendingUsers = 0;
+      usersSnapshot.forEach((doc) => {
+        if (doc.data().status === "pending") {
+          pendingUsers++;
+        }
+      });
+      setPendingUsersCount(pendingUsers);
+
       // Update states
       setTotalOrdersCount(ordersTotal);
       setPendingOrdersCount(ordersPending);
@@ -213,7 +222,9 @@ function Dashboard() {
 
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "long",
+
     day: "numeric",
+
     month: "long",
   });
 
@@ -221,7 +232,9 @@ function Dashboard() {
     { 
       title: "Total Orders", 
       value: totalOrdersCount, 
+
       icon: <FaShoppingCart />, 
+
       color: "violet",
       loading,
       onClick: () => navigate("/orders")
@@ -229,7 +242,9 @@ function Dashboard() {
     { 
       title: "Pending Orders", 
       value: pendingOrdersCount, 
+
       icon: <FaClock />, 
+
       color: "amber",
       loading,
       onClick: () => navigate("/order-pending", { state: { filterActiveWorkflows: true } }) 
@@ -255,24 +270,33 @@ function Dashboard() {
   const overviewCards = [
     { 
       title: "Today's Inward", 
+
       value: todaysInwardCount, 
+
       icon: <FaArrowDown />, 
+
       color: "sky",
       loading,
       onClick: () => navigate("/inwards")
     },
     { 
       title: "Today's Dispatch", 
+
       value: todaysDispatchCount, 
+
       icon: <FaTruck />, 
+
       color: "indigo",
       loading,
       onClick: () => navigate("/dispatches")
     },
     { 
       title: "Production Issues", 
+
       value: productionIssuesCount, 
+
       icon: <FaExclamationTriangle />, 
+
       color: "amber",
       loading,
       onClick: () => navigate("/todays-production-issues"),
@@ -290,6 +314,28 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen max-w-7xl mx-auto bg-slate-50 p-4 md:p-6 lg:p-8">
+      
+      {/* ⚠️ SYSTEM BANNER: Notice that shows up instantly if a signup comes through */}
+      {!loading && pendingUsersCount > 0 && (
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white shadow-sm">
+              <FaUserClock className="text-lg" />
+            </div>
+            <div>
+              <h4 className="font-bold text-amber-900">Access Requests Pending Approval</h4>
+              <p className="text-sm text-amber-700">There are {pendingUsersCount} new registration profiles waiting for configuration review.</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => navigate("/users")}
+            className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-amber-700 transition"
+          >
+            Manage Users
+          </button>
+        </div>
+      )}
+
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 md:text-3xl">Dashboard</h1>
@@ -376,5 +422,7 @@ function Dashboard() {
     </div>
   );
 }
+
+
 
 export default Dashboard;

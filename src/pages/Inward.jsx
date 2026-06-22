@@ -7,6 +7,7 @@ const Inward = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [availableProducts, setAvailableProducts] = useState([]);
+  const [availableVendors, setAvailableVendors] = useState([]); // 👈 Added state buffer for vendors
 
   // Form State
   const [formData, setFormData] = useState({
@@ -37,9 +38,64 @@ const Inward = () => {
     }
   };
 
+  // 👈 Fetch current vendors from 'vendors' collection
+  const fetchVendors = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, "vendors"));
+      const vendorsList = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setAvailableVendors(vendorsList);
+    } catch (error) {
+      console.error("Error fetching vendors for dropdown:", error);
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
+    fetchVendors(); // 👈 Call vendor fetch hook on component mount
   }, []);
+
+  // 👈 Handle dynamic autofill when Vendor Name is typed/selected
+  const handleVendorNameChange = (name) => {
+    const matchedVendor = availableVendors.find(
+      (v) => v.vendorName?.toLowerCase() === name.trim().toLowerCase()
+    );
+
+    if (matchedVendor) {
+      setFormData((prev) => ({
+        ...prev,
+        vendorName: name,
+        vendorCode: matchedVendor.vendorCode || "",
+      }));
+    } else {
+      setFormData((prev) => ({ 
+        ...prev, 
+        vendorName: name,
+      }));
+    }
+  };
+
+  // 👈 Handle dynamic autofill when Vendor Code is typed/selected
+  const handleVendorCodeChange = (code) => {
+    const matchedVendor = availableVendors.find(
+      (v) => v.vendorCode?.toLowerCase() === code.trim().toLowerCase()
+    );
+
+    if (matchedVendor) {
+      setFormData((prev) => ({
+        ...prev,
+        vendorCode: code,
+        vendorName: matchedVendor.vendorName || "",
+      }));
+    } else {
+      setFormData((prev) => ({ 
+        ...prev, 
+        vendorCode: code,
+      }));
+    }
+  };
 
   // Auto-fill details if code matches from dropdown, otherwise let the user type a custom name
   const handleItemCodeChange = (code) => {
@@ -63,7 +119,7 @@ const Inward = () => {
     }
   };
 
- const handleSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.itemCode || !formData.quantity || !formData.invoiceNo) {
       alert("Invoice No, Product Code, and Quantity are mandatory!");
@@ -73,7 +129,7 @@ const Inward = () => {
     try {
       setLoading(true);
       const inwardQty = Number(formData.quantity) || 0;
-      const inwardRate = Number(formData.rate) || 0; // 👈 Extract unit rate safely
+      const inwardRate = Number(formData.rate) || 0; 
 
       // 1. Check if the product code already exists
       const targetProduct = availableProducts.find(
@@ -86,7 +142,7 @@ const Inward = () => {
         await updateDoc(productRef, {
           stock: increment(inwardQty),
           rackLocation: formData.rackLocation || targetProduct.rackLocation || "",
-          price: inwardRate > 0 ? inwardRate : (targetProduct.price || 0), // 👈 Update inventory baseline price if a new rate is provided
+          price: inwardRate > 0 ? inwardRate : (targetProduct.price || 0), 
         });
       } else {
         // --- SCENARIO B: NEW PRODUCT -> AUTO-CREATE INVENTORY DOCUMENT ---
@@ -102,7 +158,7 @@ const Inward = () => {
           rackLocation: formData.rackLocation || "",
           uom: formData.uom,
           itemType: "Raw Material", 
-          price: inwardRate, // 👈 Maps the incoming form 'rate' to the product's 'price' property field!
+          price: inwardRate, 
           createdAt: new Date(),
         });
       }
@@ -162,26 +218,43 @@ const Inward = () => {
         <div>
           <h2 className="text-sm font-bold uppercase tracking-wider text-blue-600 mb-3 border-b pb-1">1. Vendor & Invoice Details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            
+            {/* Vendor Name Field with Datalist Lookup */}
             <div>
               <label className="text-xs font-semibold text-gray-600 block mb-1">Vendor Name</label>
               <input
                 type="text"
+                list="vendor-names"
                 placeholder="e.g. Acme Corp"
                 value={formData.vendorName}
-                onChange={(e) => setFormData({ ...formData, vendorName: e.target.value })}
-                className="w-full border border-gray-200 p-2 rounded-lg text-sm bg-white"
+                onChange={(e) => handleVendorNameChange(e.target.value)}
+                className="w-full border border-gray-200 p-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
               />
+              <datalist id="vendor-names">
+                {availableVendors.map((v) => (
+                  <option key={v.id} value={v.vendorName}>{v.vendorCode}</option>
+                ))}
+              </datalist>
             </div>
+
+            {/* Vendor Code Field with Datalist Lookup */}
             <div>
               <label className="text-xs font-semibold text-gray-600 block mb-1">Vendor Code</label>
               <input
                 type="text"
+                list="vendor-codes"
                 placeholder="e.g. VEND-09"
                 value={formData.vendorCode}
-                onChange={(e) => setFormData({ ...formData, vendorCode: e.target.value })}
-                className="w-full border border-gray-200 p-2 rounded-lg text-sm bg-white"
+                onChange={(e) => handleVendorCodeChange(e.target.value)}
+                className="w-full border border-gray-200 p-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
               />
+              <datalist id="vendor-codes">
+                {availableVendors.map((v) => (
+                  <option key={v.id} value={v.vendorCode}>{v.vendorName}</option>
+                ))}
+              </datalist>
             </div>
+
             <div>
               <label className="text-xs font-semibold text-gray-600 block mb-1">Invoice No *</label>
               <input

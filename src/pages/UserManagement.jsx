@@ -133,7 +133,7 @@ export default function UserManagement() {
               <tr>
                 <th className="px-6 py-3">Name</th>
                 <th className="px-6 py-3">Email</th>
-                <th className="px-6 py-3">Role Privilege</th>
+                {/* <th className="px-6 py-3">Role Privilege</th> */}
                 <th className="px-6 py-3 text-right">Access Management</th>
               </tr>
             </thead>
@@ -142,7 +142,7 @@ export default function UserManagement() {
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{user.name || 'N/A'}</td>
                   <td className="px-6 py-4">{user.email}</td>
-                  <td className="px-6 py-4">
+                  {/* <td className="px-6 py-4">
                     <select 
                       value={user.role || 'employee'} 
                       onChange={(e) => handleRoleChange(user.id, e.target.value)}
@@ -151,7 +151,7 @@ export default function UserManagement() {
                       <option value="employee">Employee / Staff</option>
                       <option value="admin">Administrator</option>
                     </select>
-                  </td>
+                  </td> */}
                   <td className="px-6 py-4 text-right">
                     <button 
                       onClick={() => handleRevokeAccess(user.id)}

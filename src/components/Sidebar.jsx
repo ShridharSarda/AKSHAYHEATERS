@@ -48,7 +48,7 @@ const navGroups = [
   {
     label: "System",
     items: [
-      { name: "Reports", icon: <FaChartBar />, path: "/reports" },
+      // { name: "Reports", icon: <FaChartBar />, path: "/reports" },
       { name: "Settings", icon: <FaCog />, path: "/settings" },
     ],
   },
